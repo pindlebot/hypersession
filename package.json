@@ -1,0 +1,22 @@
+{
+  "name": "hyper-record",
+  "version": "0.0.1",
+  "main": "dist/index.js",
+  "license": "MIT",
+  "scripts": {
+    "build": "parcel build src/index.js --target electron"
+  },
+  "devDependencies": {
+    "babel-plugin-transform-class-properties": "^6.24.1",
+    "babel-plugin-transform-object-rest-spread": "^6.26.0",
+    "babel-plugin-transform-runtime": "^6.23.0",
+    "babel-preset-env": "^1.7.0",
+    "babel-preset-react": "^6.24.1",
+    "parcel-bundler": "^1.9.7",
+    "react": "^16.4.2"
+  },
+  "dependencies": {
+    "gifencoder": "^1.1.0",
+    "png-js": "^0.1.1"
+  }
+}
