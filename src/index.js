@@ -1,18 +1,9 @@
-const GIFEncoder = require('gifencoder');
-const PNG = require('png-js')
+import React from 'react'
+import Component from 'hyper/component'
+import gifencoder from 'gifencoder'
+import PNG from 'png-js'
 
 const TOGGLE_RECORD = 'TOGGLE_RECORD'
-
-export function execCommand(command, fn, e) {
-  return (dispatch, getState) =>
-    dispatch({
-      type: 'UI_COMMAND_EXEC',
-      command,
-      effect() {
-        rpc.emit('command', command);
-      }
-    })
-}
 
 module.exports.decorateTerms = (Terms, { React, notify }) => {
   return class extends React.Component {
@@ -21,26 +12,59 @@ module.exports.decorateTerms = (Terms, { React, notify }) => {
       this.terms = null;
       this.onDecorated = this.onDecorated.bind(this);
     }
-  
+
     onDecorated(terms) {
+      this.terms = terms
       window.rpc.on('record init', () => {
         notify('Recording', 'Recording terminal session.')
       })
+      
       window.rpc.on('record process init', () => {
+        const term = this.terms.getActiveTerm();
+
+        term.write('\n\n\r')
         notify('Processing', 'This may take a while...')
       })
-      window.rpc.on('record process done', () => {
-        notify('Done!', 'Gif processed.')
+      window.rpc.on('record process progress', () => {
+        const term = this.terms.getActiveTerm();
+
+        term.write('|')
+        //store.dispatch({
+        //  type: 'SESSION_USER_DATA',
+        //  data: '|',
+        //  effect() {
+        //    const targetUid = store.getState().sessions.activeUid;
+        //    rpc.emit('data', {uid: targetUid, data: '|'})
+        //  }
+        // })
       })
   
-      this.terms = terms;
+      window.rpc.on('record process done', () => {
+        const term = this.terms.getActiveTerm();
+      
+        term.write('\u001Bc')
+        term.write('\n\n\r')
+
+        notify('Done!', 'Gif processed.')
+      })
+    
+
+      console.log(this.props)
+  
       this.terms.registerCommands({
-        'pane:screenshot': e => {
-          store.dispatch(execCommand(TOGGLE_RECORD))
+        'pane:record': e => {
+          store.dispatch({
+            type: TOGGLE_RECORD,
+            effect() {
+              rpc.emit('command', TOGGLE_RECORD)
+            }
+          })
         }
       })
-      // Don't forget to propagate it to HOC chain
-      if (this.props.onDecorated) this.props.onDecorated(terms);
+  
+      if (this.props.onDecorated) {
+        this.props.onDecorated(terms)
+      }
     }
 
     render() {
@@ -52,7 +76,7 @@ module.exports.decorateTerms = (Terms, { React, notify }) => {
 // Adding Keymaps
 module.exports.decorateKeymaps = keymaps => {
   const newKeymaps = {
-    'pane:screenshot': 'ctrl+shift+s'
+    'pane:record': 'ctrl+shift+r'
   }
   return Object.assign({}, keymaps, newKeymaps)
 }
@@ -87,7 +111,7 @@ module.exports.onWindow = (win) => {
         }
       }
       skip = false
-      data.push([getDelay(), image.toPNG()])
+      data.push([getDelay(), image])
     })
   }
   win.rpc.on('command', async (command) => {
@@ -98,8 +122,9 @@ module.exports.onWindow = (win) => {
         time = process.hrtime()
       } else {
         recording = false
-        capture()
         win.rpc.emit('record process init')
+
+        capture()
         let [w, h] = win.getSize()
         let encoder = new GIFEncoder(2 * w, 2 * h)
         encoder.createReadStream().pipe(fs.createWriteStream(GIF_PATH))
@@ -108,33 +133,20 @@ module.exports.onWindow = (win) => {
         encoder.setQuality(10)
 
         while (data.length) {
-          let [delay, buffer] = data.shift()
+          let [delay, img] = data.shift()
         
-          let png = new PNG(buffer);
+          let png = new PNG(img.toPNG());
           await new Promise((resolve, reject) => png.decode((pixels) => {
             encoder.setDelay(delay)
             encoder.addFrame(pixels)
+            win.rpc.emit('record process progress')
             resolve()
           }))
         }
         
         win.rpc.emit('record process done')
-        encoder.finish()
-        
-        return
+        encoder.finish() 
       }
-    
-      //interval = setInterval(() => {
-      //  if (!recording) {
-      //    return
-      //  }
-      //  win.capturePage(image => {
-      //    let buffer = image.toPNG()
-      //    const used = process.memoryUsage().heapUsed / 1024 / 1024
-      //    win.rpc.emit('memory', `${Math.round(used * 100) / 100} MB`)
-      //    buffers.push(buffer)
-      //  })
-      //}, 50)
     }
   })
   win.rpc.on('data', () => {
@@ -143,15 +155,22 @@ module.exports.onWindow = (win) => {
   })
 }
 
-// export function mapHyperDispatch(dispatch, map) {
-//  console.log({ dispatch, map })
-//  return map
-//}
-
-module.exports.middleware = (store) => {
-  return (next) => (action) => {
-    // console.log(action)
-    // console.log({ store, next, action })
-    next(action)
+module.exports.reduceUI = (state, action) => {
+  switch (action.type) {
+    case TOGGLE_RECORD:
+      return state.set('recording', !state.recording);
   }
+  return state;
+}
+
+module.exports.mapTermsState = (state, map) => {
+  return Object.assign(map, {
+    recording: state.ui.recording
+  })
+}
+
+module.exports.getTermProps = (uid, parentProps, props) => {
+  return Object.assign(props, {
+    recording: parentProps.recording
+  })
 }
