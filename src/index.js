@@ -1,4 +1,3 @@
-import React from 'react'
 import Component from 'hyper/component'
 import gifencoder from 'gifencoder'
 import PNG from 'png-js'
@@ -73,7 +72,6 @@ module.exports.decorateTerms = (Terms, { React, notify }) => {
   }
 }
 
-// Adding Keymaps
 module.exports.decorateKeymaps = keymaps => {
   const newKeymaps = {
     'pane:record': 'ctrl+shift+r'
