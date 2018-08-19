@@ -1,6 +1,5 @@
-import Component from 'hyper/component'
-import gifencoder from 'gifencoder'
-import PNG from 'png-js'
+const GIFEncoder = require('gifencoder')
+const PNG = require('png-js')
 
 const TOGGLE_RECORD = 'TOGGLE_RECORD'
 
@@ -17,38 +16,9 @@ module.exports.decorateTerms = (Terms, { React, notify }) => {
       window.rpc.on('record init', () => {
         notify('Recording', 'Recording terminal session.')
       })
-      
       window.rpc.on('record process init', () => {
-        const term = this.terms.getActiveTerm();
-
-        term.write('\n\n\r')
         notify('Processing', 'This may take a while...')
       })
-      window.rpc.on('record process progress', () => {
-        const term = this.terms.getActiveTerm();
-
-        term.write('|')
-        //store.dispatch({
-        //  type: 'SESSION_USER_DATA',
-        //  data: '|',
-        //  effect() {
-        //    const targetUid = store.getState().sessions.activeUid;
-        //    rpc.emit('data', {uid: targetUid, data: '|'})
-        //  }
-        // })
-      })
-  
-      window.rpc.on('record process done', () => {
-        const term = this.terms.getActiveTerm();
-      
-        term.write('\u001Bc')
-        term.write('\n\n\r')
-
-        notify('Done!', 'Gif processed.')
-      })
-    
-
-      console.log(this.props)
   
       this.terms.registerCommands({
         'pane:record': e => {
@@ -80,36 +50,31 @@ module.exports.decorateKeymaps = keymaps => {
 }
 
 module.exports.onWindow = (win) => {
+  const path = require('path')
+  const fs = require('fs')
   const HOME = process.platform == 'win32'
     ? process.env.USERPROFILE
     : process.env.HOME
 
-  const path = require('path')
-  const fs = require('fs')
   const GIF_PATH = path.join(HOME, 'Desktop/hyper.gif')
   let recording = false
   let skip = false
   let time
-  const data = []
+  const frames = []
+  const NS_PER_SEC = 1e9
+  const MS_PER_NS = 1e-6
 
   const getDelay = () => {
     let diff = process.hrtime(time)
     time = process.hrtime()
-    return Math.floor(diff[1] / 1e6)
+    let ms = (diff[0] * NS_PER_SEC + diff[1]) * MS_PER_NS
+    return Math.floor(ms)
   }
 
   const capture = () => {
     win.capturePage(image => {
-
       let delay = getDelay()
-      if (delay < 50) {
-        if (!skip) {
-          skip = true
-          return
-        }
-      }
-      skip = false
-      data.push([getDelay(), image])
+      frames.push([delay, image])
     })
   }
   win.rpc.on('command', async (command) => {
@@ -120,7 +85,7 @@ module.exports.onWindow = (win) => {
         time = process.hrtime()
       } else {
         recording = false
-        win.rpc.emit('record process init')
+        win.rpc.emit('record process init', [0, frames.length])
 
         capture()
         let [w, h] = win.getSize()
@@ -129,25 +94,25 @@ module.exports.onWindow = (win) => {
         encoder.start()
         encoder.setRepeat(-1)
         encoder.setQuality(10)
-
-        while (data.length) {
-          let [delay, img] = data.shift()
-        
+        let index = 0
+        while (index < frames.length) {
+          let [delay, img] = frames[index]
           let png = new PNG(img.toPNG());
           await new Promise((resolve, reject) => png.decode((pixels) => {
             encoder.setDelay(delay)
             encoder.addFrame(pixels)
-            win.rpc.emit('record process progress')
+            win.rpc.emit('record process progress', [index, frames.length])
             resolve()
           }))
+          index++
         }
-        
+       
         win.rpc.emit('record process done')
         encoder.finish() 
       }
     }
   })
-  win.rpc.on('data', () => {
+  win.rpc.on('data', (data) => {
     if (!recording) return
     capture()
   })
@@ -171,4 +136,84 @@ module.exports.getTermProps = (uid, parentProps, props) => {
   return Object.assign(props, {
     recording: parentProps.recording
   })
+}
+
+module.exports.decorateTerm = (Term, { React, notify }) => {
+  return class extends React.Component {
+    constructor (props, context) {
+      super(props, context)
+
+      this.drawFrame = this.drawFrame.bind(this);
+      this.resizeCanvas = this.resizeCanvas.bind(this);
+      this.onDecorated = this.onDecorated.bind(this);
+      this.onCursorMove = this.onCursorMove.bind(this);
+     
+      this._div = null;
+      this._canvas = null;
+    }
+
+    onDecorated (term) {
+      if (this.props.onDecorated) this.props.onDecorated(term)
+      window.rpc.on('record process init', (frames) => {
+        term.write('\r\n')
+      })
+      window.rpc.on('record process progress', (progress) => {
+        this.drawFrame(progress)
+      })
+      window.rpc.on('record process done', () => {
+         this._canvasContext.clearRect(0, 0, this._canvas.width, this._canvas.height)
+         document.body.removeChild(this._canvas)
+         notify('Done!', 'Gif processed.')
+      })
+      this._div = term.termRef;
+      this.initCanvas()
+    }
+
+    // Set up our canvas element we'll use to do particle effects on.
+    initCanvas () {
+      this._canvas = document.createElement('canvas')
+      this._canvas.style.position = 'absolute'
+      this._canvas.style.top = '0'
+      this._canvas.style.pointerEvents = 'none'
+      this._canvasContext = this._canvas.getContext('2d')
+      this._canvas.width = window.innerWidth
+      this._canvas.height = window.innerHeight
+      document.body.appendChild(this._canvas)
+      window.addEventListener('resize', this.resizeCanvas)
+    }
+
+    resizeCanvas () {
+      this._canvas.width = window.innerWidth
+      this._canvas.height = window.innerHeight
+    }
+
+    // Draw the next frame in the particle simulation.
+    drawFrame ([currentFrame, totalFrames]) {
+      this._canvasContext.fillStyle = `cyan`;
+      this._canvasContext.fillRect(this.pos.x + (currentFrame * 4), this.pos.y + 2, 2, 10);
+    }
+  
+    onCursorMove (cursorFrame) {
+      if (this.props.onCursorMove) {
+        this.props.onCursorMove(cursorFrame)
+      }
+      const { x, y } = cursorFrame
+      const origin = this._div.getBoundingClientRect()
+      this.pos = {
+        x: x + origin.left,
+        y: y + origin.top
+      }
+    }
+ 
+    render () {
+      return React.createElement(Term, Object.assign({}, this.props, {
+        onDecorated: this.onDecorated,
+        onCursorMove: this.onCursorMove
+      }))
+    }
+
+    componentWillUnmount () {
+      document.body.removeChild(this._canvas)
+    }
+  }
 }
