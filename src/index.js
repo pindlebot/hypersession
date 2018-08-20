@@ -1,7 +1,8 @@
 const GIFEncoder = require('gifencoder')
 const PNG = require('png-js')
-
+const debounce = require('debounce')
 const TOGGLE_RECORD = 'TOGGLE_RECORD'
+const TERM_CLEARED = 'TERM_CLEARED'
 
 module.exports.decorateTerms = (Terms, { React, notify }) => {
   return class extends React.Component {
@@ -14,11 +15,20 @@ module.exports.decorateTerms = (Terms, { React, notify }) => {
     onDecorated(terms) {
       this.terms = terms
       window.rpc.on('record init', () => {
+        const term = this.terms.getActiveTerm()
+        term.clear()
         notify('Recording', 'Recording terminal session.')
+        store.dispatch({
+          type: TERM_CLEARED,
+          effect() {
+            rpc.emit('command', TERM_CLEARED)
+          }
+        })
       })
       window.rpc.on('record process init', () => {
         notify('Processing', 'This may take a while...')
       })
+      window.rpc.on('record log', console.log.bind(console))
   
       this.terms.registerCommands({
         'pane:record': e => {
@@ -58,9 +68,11 @@ module.exports.onWindow = (win) => {
 
   const GIF_PATH = path.join(HOME, 'Desktop/hyper.gif')
   let recording = false
-  let skip = false
   let time
-  const frames = []
+  let frames = []
+  let history = {
+    data: ''
+  }
   const NS_PER_SEC = 1e9
   const MS_PER_NS = 1e-6
 
@@ -71,23 +83,26 @@ module.exports.onWindow = (win) => {
     return Math.floor(ms)
   }
 
-  const capture = () => {
-    win.capturePage(image => {
-      let delay = getDelay()
-      frames.push([delay, image])
-    })
-  }
+  const capture = (meta = {}) => win.capturePage(image => {
+    let delay = getDelay()
+    frames.push({ delay, image, meta})
+  })
+
+  const debounced = debounce(capture, 100)
+ 
   win.rpc.on('command', async (command) => {
+    if (command === TERM_CLEARED) {
+      recording = true
+      time = process.hrtime()
+    }
+    
     if (command === TOGGLE_RECORD) {
       if (!recording) {
-        recording = true
         win.rpc.emit('record init')
-        time = process.hrtime()
       } else {
         recording = false
         win.rpc.emit('record process init', [0, frames.length])
 
-        capture()
         let [w, h] = win.getSize()
         let encoder = new GIFEncoder(2 * w, 2 * h)
         encoder.createReadStream().pipe(fs.createWriteStream(GIF_PATH))
@@ -96,8 +111,8 @@ module.exports.onWindow = (win) => {
         encoder.setQuality(10)
         let index = 0
         while (index < frames.length) {
-          let [delay, img] = frames[index]
-          let png = new PNG(img.toPNG());
+          let {delay, image} = frames[index]
+          let png = new PNG(image.toPNG());
           await new Promise((resolve, reject) => png.decode((pixels) => {
             encoder.setDelay(delay)
             encoder.addFrame(pixels)
@@ -106,14 +121,34 @@ module.exports.onWindow = (win) => {
           }))
           index++
         }
-       
+        encoder.finish()
         win.rpc.emit('record process done')
-        encoder.finish() 
+        frames = []
+        history = {
+          data: ''
+        }
       }
     }
   })
-  win.rpc.on('data', (data) => {
+  
+  win.rpc.on('data', ({ data, uid }) => {    
     if (!recording) return
+  
+    if (/^record$/.test(history.data)) {
+      frames = frames.slice(0, history.frame)
+      return
+    }
+
+    if (data.charCodeAt(0) === 13) {
+      history.data = ''
+      history.frame = frames.length + 3
+      win.sessions.get(uid).once('data', data => {
+        setTimeout(() => capture(), 50)
+      })
+    } else {
+      history.data += data
+    }
+
     capture()
   })
 }
@@ -143,33 +178,36 @@ module.exports.decorateTerm = (Term, { React, notify }) => {
     constructor (props, context) {
       super(props, context)
 
-      this.drawFrame = this.drawFrame.bind(this);
-      this.resizeCanvas = this.resizeCanvas.bind(this);
-      this.onDecorated = this.onDecorated.bind(this);
-      this.onCursorMove = this.onCursorMove.bind(this);
+      this.drawFrame = this.drawFrame.bind(this)
+      this.resizeCanvas = this.resizeCanvas.bind(this)
+      this.onDecorated = this.onDecorated.bind(this)
      
-      this._div = null;
-      this._canvas = null;
+      this._canvas = null
+      this._processing = null;
     }
 
     onDecorated (term) {
       if (this.props.onDecorated) this.props.onDecorated(term)
       window.rpc.on('record process init', (frames) => {
-        term.write('\r\n')
+        this._processing = true
+        this._canvas.style.background = this.props.backgroundColor
+        this.pos = {}
+        this.pos.x = (window.innerWidth - (frames[1] * 8)) / 2
+        this.pos.y = (window.innerHeight - 14) / 2
       })
       window.rpc.on('record process progress', (progress) => {
         this.drawFrame(progress)
       })
       window.rpc.on('record process done', () => {
          this._canvasContext.clearRect(0, 0, this._canvas.width, this._canvas.height)
-         document.body.removeChild(this._canvas)
          notify('Done!', 'Gif processed.')
+         this._processing = false
+         this._canvas.style.background = 'transparent'
       })
       this._div = term.termRef;
       this.initCanvas()
     }
 
-    // Set up our canvas element we'll use to do particle effects on.
     initCanvas () {
       this._canvas = document.createElement('canvas')
       this._canvas.style.position = 'absolute'
@@ -187,28 +225,14 @@ module.exports.decorateTerm = (Term, { React, notify }) => {
       this._canvas.height = window.innerHeight
     }
 
-    // Draw the next frame in the particle simulation.
     drawFrame ([currentFrame, totalFrames]) {
       this._canvasContext.fillStyle = `cyan`;
-      this._canvasContext.fillRect(this.pos.x + (currentFrame * 4), this.pos.y + 2, 2, 10);
+      this._canvasContext.fillRect(this.pos.x + (currentFrame * 8), this.pos.y + 4, 4, 14);
     }
   
-    onCursorMove (cursorFrame) {
-      if (this.props.onCursorMove) {
-        this.props.onCursorMove(cursorFrame)
-      }
-      const { x, y } = cursorFrame
-      const origin = this._div.getBoundingClientRect()
-      this.pos = {
-        x: x + origin.left,
-        y: y + origin.top
-      }
-    }
- 
     render () {
       return React.createElement(Term, Object.assign({}, this.props, {
-        onDecorated: this.onDecorated,
-        onCursorMove: this.onCursorMove
+        onDecorated: this.onDecorated
       }))
     }
 
@@ -216,4 +240,31 @@ module.exports.decorateTerm = (Term, { React, notify }) => {
       document.body.removeChild(this._canvas)
     }
   }
+}
+
+
+exports.middleware = (store) => (next) => (action) => {
+  if ('SESSION_ADD_DATA' === action.type) {
+		    const { data } = action
+    if (detectRecordCommand(data)) {
+      return store.dispatch({
+        type: TOGGLE_RECORD,
+        effect() {
+          rpc.emit('command', TOGGLE_RECORD)
+        }
+      })
+    }
+  }
+
+  next(action)
+}
+
+function detectRecordCommand(data) {
+  const patterns = [
+    'record: command not found',
+    'command not found: record',
+    'Unknown command \'record\'',
+    '\'record\' is not recognized.*'
+  ];
+  return new RegExp('(' + patterns.join(')|(') + ')').test(data)
 }

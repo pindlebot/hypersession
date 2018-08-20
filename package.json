@@ -19,10 +19,14 @@
     "standard": "^11.0.1"
   },
   "dependencies": {
+    "debounce": "^1.2.0",
     "gifencoder": "^1.1.0",
     "png-js": "^0.1.1"
   },
   "standard": {
-    "parser": "babel-eslint"
+    "parser": "babel-eslint",
+    "include": [
+      "src/*.js"
+    ]
   }
 }
