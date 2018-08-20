@@ -1,11 +1,11 @@
 {
-  "name": "hyper-record",
+  "name": "hypersession",
   "version": "0.0.1",
   "main": "dist/index.js",
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/unshift/hyper-record.git"
+    "url": "https://github.com/unshift/hypersession.git"
   },
   "files": [
     "dist"
