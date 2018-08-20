@@ -7,6 +7,9 @@
     "type": "git",
     "url": "https://github.com/unshift/hyper-record.git"
   },
+  "files": [
+    "dist"
+  ],
   "scripts": {
     "build": "parcel build src/index.js --target electron"
   },
