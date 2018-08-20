@@ -1,6 +1,6 @@
 const GIFEncoder = require('gifencoder')
 const PNG = require('png-js')
-const debounce = require('debounce')
+// const debounce = require('debounce')
 const TOGGLE_RECORD = 'TOGGLE_RECORD'
 const TERM_CLEARED = 'TERM_CLEARED'
 
@@ -70,9 +70,9 @@ module.exports.onWindow = (win) => {
   let recording = false
   let time
   let frames = []
-  let history = {
-    data: ''
-  }
+  // let history = {
+  //  data: ''
+  // }
   const NS_PER_SEC = 1e9
   const MS_PER_NS = 1e-6
 
@@ -83,12 +83,15 @@ module.exports.onWindow = (win) => {
     return Math.floor(ms)
   }
 
-  const capture = (meta = {}) => win.capturePage(image => {
-    let delay = getDelay()
-    frames.push({ delay, image, meta})
-  })
+  const capture = (meta = {}) => new Promise((resolve, reject) => 
+    win.capturePage(image => {
+      let delay = getDelay()
+      frames.push({ delay, image, meta})
+      resolve()
+    })
+  )
 
-  const debounced = debounce(capture, 100)
+  // const debounced = debounce(capture, 50)
  
   win.rpc.on('command', async (command) => {
     if (command === TERM_CLEARED) {
@@ -100,9 +103,9 @@ module.exports.onWindow = (win) => {
       if (!recording) {
         win.rpc.emit('record init')
       } else {
+        await capture()
         recording = false
         win.rpc.emit('record process init', [0, frames.length])
-
         let [w, h] = win.getSize()
         let encoder = new GIFEncoder(2 * w, 2 * h)
         encoder.createReadStream().pipe(fs.createWriteStream(GIF_PATH))
@@ -111,7 +114,7 @@ module.exports.onWindow = (win) => {
         encoder.setQuality(10)
         let index = 0
         while (index < frames.length) {
-          let {delay, image} = frames[index]
+          let { delay, image } = frames[index]
           let png = new PNG(image.toPNG());
           await new Promise((resolve, reject) => png.decode((pixels) => {
             encoder.setDelay(delay)
@@ -124,32 +127,32 @@ module.exports.onWindow = (win) => {
         encoder.finish()
         win.rpc.emit('record process done')
         frames = []
-        history = {
-          data: ''
-        }
+        // history = {
+        //  data: ''
+        // }
       }
     }
   })
   
-  win.rpc.on('data', ({ data, uid }) => {    
+  win.rpc.on('data', async ({ data, uid }) => {    
     if (!recording) return
   
-    if (/^record$/.test(history.data)) {
-      frames = frames.slice(0, history.frame)
-      return
-    }
+    // if (/^record$/.test(history.data)) {
+    //  frames = frames.slice(0, history.frame)
+    //  return
+    // }
 
-    if (data.charCodeAt(0) === 13) {
-      history.data = ''
-      history.frame = frames.length + 3
-      win.sessions.get(uid).once('data', data => {
-        setTimeout(() => capture(), 50)
-      })
-    } else {
-      history.data += data
-    }
+    // if (data.charCodeAt(0) === 13) {
+    //  history.data = ''
+    //  history.frame = frames.length + 3
+    //  win.sessions.get(uid).once('data', data => {
+    //    setTimeout(() => capture(), 50)
+    //  })
+    // } else {
+    //  history.data += data
+    // }
 
-    capture()
+    await capture()
   })
 }
 
