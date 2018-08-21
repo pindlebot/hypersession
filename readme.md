@@ -1,6 +1,6 @@
 ## hypersession
 
-An extension for Hyper that enables recording terminal sessions. Start and stop recording with ctrl+shift+R. Outputs a gif on the Desktop. 
+An extension for Hyper that enables recording terminal sessions. Start and stop recording with ctrl+shift+r. Outputs a gif to the Desktop. 
 
 ![https://raw.githubusercontent.com/unshift/hypersession/master/hyper.gif](https://raw.githubusercontent.com/unshift/hypersession/master/hyper.gif)
 

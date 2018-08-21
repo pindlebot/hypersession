@@ -11,7 +11,8 @@
     "dist"
   ],
   "scripts": {
-    "build": "parcel build src/index.js --target electron"
+    "build": "parcel build src/index.js --target electron",
+    "lint": "standard src/*.js --fix | snazzy"
   },
   "devDependencies": {
     "babel-eslint": "^8.2.6",
@@ -23,6 +24,7 @@
     "eslint": "^5.4.0",
     "parcel-bundler": "^1.9.7",
     "react": "^16.4.2",
+    "snazzy": "^7.1.1",
     "standard": "^11.0.1"
   },
   "dependencies": {
