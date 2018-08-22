@@ -33,12 +33,6 @@ export const decorateKeymaps = keymaps => {
 }
 
 export const onWindow = (win) => {
-  console.log(win.rpc.id)
-  console.log(win.sessions)
-  win.rpc.on(win.rpc.id, (data) => {
-    console.log(data)
-  })
-
   const path = require('path')
   const fs = require('fs')
   const HOME = process.platform === 'win32'
@@ -76,7 +70,6 @@ export const onWindow = (win) => {
   const capture = (meta = {}) => new Promise((resolve, reject) =>
     win.capturePage(image => {
       let delay = getDelay()
-      console.log(delay)
       frames.push({ delay, image, meta })
       resolve()
     })
