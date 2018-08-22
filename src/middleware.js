@@ -12,7 +12,7 @@ function detectRecordCommand (data) {
 
 export default (store) => (next) => (action) => {
   if (SESSION_ADD_DATA === action.type) {
-		    const { data } = action
+    const { data } = action
     if (detectRecordCommand(data)) {
       return store.dispatch({
         type: HYPERSESSION_TOGGLE,
