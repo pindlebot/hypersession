@@ -25,19 +25,18 @@ export default (Terms, { React, notify }) => {
     constructor (props, context) {
       super(props, context)
       this.terms = null
-      this.onDecorated = this.onDecorated.bind(this)
     }
 
-    onDecorated (terms) {
+    onDecorated = (terms) => {
       this.terms = terms
       window.rpc.on('hypersession init', async (script) => {
         const term = this.terms.getActiveTerm()
         term.clear()
         notify('Recording', 'Recording terminal session.')
-        store.dispatch({
+        window.store.dispatch({
           type: HYPERSESSION_CLEAR,
           effect () {
-            const uid = store.getState().sessions.activeUid
+            const uid = window.store.getState().sessions.activeUid
             window.rpc.emit('hypersession clear', { command: HYPERSESSION_CLEAR, uid })
           }
         })
@@ -49,14 +48,12 @@ export default (Terms, { React, notify }) => {
             chars.push('\n')
             while (chars.length) {
               await new Promise((resolve, reject) => setTimeout(() => {
-                store.dispatch(sendSessionData(chars.shift()))
+                window.store.dispatch(sendSessionData(chars.shift()))
                 resolve()
-
               }, 200))
             }
           }
         }
-
       })
       window.rpc.on('hypersession process init', () => {
         notify('Processing', 'This may take a while...')
@@ -65,11 +62,11 @@ export default (Terms, { React, notify }) => {
 
       this.terms.registerCommands({
         [PANE_RECORD]: e => {
-          store.dispatch({
+          window.store.dispatch({
             type: HYPERSESSION_TOGGLE,
             effect () {
-              const uid = store.getState().sessions.activeUid
-              rpc.emit('hypersession toggle', { command: HYPERSESSION_TOGGLE, uid })
+              const uid = window.store.getState().sessions.activeUid
+              window.rpc.emit('hypersession toggle', { command: HYPERSESSION_TOGGLE, uid })
             }
           })
         }
