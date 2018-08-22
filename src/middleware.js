@@ -24,10 +24,5 @@ export default (store) => (next) => (action) => {
     }
   }
 
-  if (SESSION_PTY_DATA === action.type) {
-    // return store.dispatch({
-    //  type: ''
-    // })
-  }
   next(action)
 }

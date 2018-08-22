@@ -1,7 +1,7 @@
 export const NS_PER_SEC = 1e9
 export const MS_PER_NS = 1e-6
 
-export const PANE_RECORD = 'pane:record'
+export const HYPERSESSION_RECORD = 'pane:record'
 
 export const SESSION_ADD_DATA = 'SESSION_ADD_DATA'
 export const SESSION_USER_DATA = 'SESSION_USER_DATA'

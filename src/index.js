@@ -1,16 +1,13 @@
-const PNG = require('png-js')
-const GIFEncoder = require('gifencoder')
+import PNG from 'png-js'
+import GIFEncoder from 'gifencoder'
 import {
   NS_PER_SEC,
   MS_PER_NS,
-  PANE_RECORD,
-  SESSION_ADD_DATA,
-  SESSION_USER_DATA,
-  HYPERSESSION_CLEAR,
+  HYPERSESSION_RECORD,
   HYPERSESSION_TOGGLE
 } from './constants'
+import debounce from 'debounce'
 
-export { default as decorateKeymaps } from './decorateKeymaps'
 export { default as decorateTerm } from './decorateTerm'
 export { default as decorateTerms } from './decorateTerms'
 export { default as middleware } from './middleware'
@@ -23,7 +20,25 @@ export const decorateConfig = (config) => {
   return config
 }
 
+export const decorateKeymaps = keymaps => {
+  let configKeyMaps = (hyperConfig &&
+    hyperConfig.hypersession &&
+    hyperConfig.keymaps) || {}
+
+  return {
+    ...keymaps,
+    [HYPERSESSION_RECORD]: 'ctrl+shift+r',
+    ...configKeyMaps
+  }
+}
+
 export const onWindow = (win) => {
+  console.log(win.rpc.id)
+  console.log(win.sessions)
+  win.rpc.on(win.rpc.id, (data) => {
+    console.log(data)
+  })
+
   const path = require('path')
   const fs = require('fs')
   const HOME = process.platform === 'win32'
@@ -32,18 +47,24 @@ export const onWindow = (win) => {
 
   const GIF_PATH = path.join(HOME, 'Desktop/hyper.gif')
   let script
-  if (hyperConfig.hypersession && hyperConfig.hypersession.script) {
+  if (
+    hyperConfig.hypersession &&
+    hyperConfig.hypersession.script
+  ) {
     let data
     try {
       data = fs.readFileSync(path.resolve(hyperConfig.hypersession.script), { encoding: 'utf8' })
     } catch (err) {
-      win.rpc.emit('record log', err)
+      win.rpc.emit('hypersession log', err)
     }
     script = data.split(/\r?\n/g).filter(l => l !== '')
   }
   let recording = false
   let time
   let frames = []
+  setTimeout(() => {
+    win.rpc.emit('hypersession log', win.rpc.id)
+  }, 2000)
 
   const getDelay = () => {
     let diff = process.hrtime(time)
@@ -55,19 +76,25 @@ export const onWindow = (win) => {
   const capture = (meta = {}) => new Promise((resolve, reject) =>
     win.capturePage(image => {
       let delay = getDelay()
-      frames.push({ delay, image, meta})
+      console.log(delay)
+      frames.push({ delay, image, meta })
       resolve()
     })
   )
+  const debounced = debounce(capture, 100)
+
   win.rpc.on('hypersession clear', async ({ uid }) => {
     recording = true
     time = process.hrtime()
+    win.sessions.get(uid).on('data', debounced)
   })
 
   win.rpc.on('hypersession toggle', async ({ uid }) => {
     if (!recording) {
       win.rpc.emit('hypersession init', script)
     } else {
+      let sess = win.sessions.get(uid)
+      if (sess) sess.removeListener('data', debounced)
       await capture()
       recording = false
       win.rpc.emit('hypersession process init', [0, frames.length])
@@ -112,7 +139,7 @@ export const onWindow = (win) => {
     //  history.data += data
     // }
 
-    await capture()
+    debounced()
   })
 }
 

@@ -2,7 +2,7 @@ import {
   SESSION_USER_DATA,
   HYPERSESSION_CLEAR,
   HYPERSESSION_TOGGLE,
-  PANE_RECORD,
+  HYPERSESSION_RECORD
 } from './constants'
 
 function sendSessionData (data) {
@@ -61,7 +61,7 @@ export default (Terms, { React, notify }) => {
       window.rpc.on('hypersession log', console.log.bind(console))
 
       this.terms.registerCommands({
-        [PANE_RECORD]: e => {
+        [HYPERSESSION_RECORD]: e => {
           window.store.dispatch({
             type: HYPERSESSION_TOGGLE,
             effect () {
