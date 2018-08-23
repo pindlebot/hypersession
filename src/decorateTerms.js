@@ -27,39 +27,51 @@ export default (Terms, { React, notify }) => {
       this.terms = null
     }
 
-    onDecorated = (terms) => {
-      this.terms = terms
-      window.rpc.on('hypersession init', async (script) => {
-        const term = this.terms.getActiveTerm()
-        term.clear()
-        notify('Recording', 'Recording terminal session.')
-        window.store.dispatch({
-          type: HYPERSESSION_CLEAR,
-          effect () {
-            const uid = window.store.getState().sessions.activeUid
-            window.rpc.emit('hypersession clear', { command: HYPERSESSION_CLEAR, uid })
-          }
-        })
+    done = () => {
+      notify('Done!', 'Gif processed.')
+      console.timeEnd('processing')
+    }
 
-        if (script) {
-          while (script.length) {
-            let line = script.shift()
-            let chars = line.split('')
-            chars.push('\n')
-            while (chars.length) {
-              await new Promise((resolve, reject) => setTimeout(() => {
-                window.store.dispatch(sendSessionData(chars.shift()))
-                resolve()
-              }, 200))
-            }
-          }
+    init = async (script) => {
+      const term = this.terms.getActiveTerm()
+      term.clear()
+      notify('Recording', 'Recording terminal session.')
+      window.store.dispatch({
+        type: HYPERSESSION_CLEAR,
+        effect () {
+          const uid = window.store.getState().sessions.activeUid
+          window.rpc.emit('hypersession clear', { command: HYPERSESSION_CLEAR, uid })
         }
       })
-      window.rpc.on('hypersession process init', () => {
-        notify('Processing', 'This may take a while...')
-      })
-      window.rpc.on('hypersession log', console.log.bind(console))
+      if (script) {
+        while (script.length) {
+          let line = script.shift()
+          let chars = line.split('')
+          chars.push('\n')
+          while (chars.length) {
+            await new Promise((resolve, reject) => setTimeout(() => {
+              window.store.dispatch(sendSessionData(chars.shift()))
+              resolve()
+            }, 200))
+          }
+        }
+      }
+    }
 
+    process = () => {
+      console.time('processing')
+      // notify('Processing', 'This may take a while...')
+    }
+
+    onDecorated = (terms) => {
+      this.terms = terms
+      window.rpc.on('hypersession init', this.init)
+      window.rpc.on('hypersession process init', this.process)
+      window.rpc.on('hypersession log', console.log.bind(console))
+      window.rpc.on('hypersession process done', this.done)
+      window.rpc.on('hypersession process progress', (data) => {
+        console.log('progress', data)
+      })
       this.terms.registerCommands({
         [HYPERSESSION_RECORD]: e => {
           window.store.dispatch({
@@ -75,6 +87,12 @@ export default (Terms, { React, notify }) => {
       if (this.props.onDecorated) {
         this.props.onDecorated(terms)
       }
+    }
+
+    componentWillUnmount () {
+      window.rpc.removeListener('hypersession init', this.init)
+      window.rpc.removeListener('hypersession process init', this.process)
+      window.rpc.removeListener('hypersession process done', this.done)
     }
 
     render () {

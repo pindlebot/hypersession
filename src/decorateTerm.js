@@ -18,7 +18,6 @@ export default (Term, { React, notify }) => {
 
     done = () => {
       this._canvasContext.clearRect(0, 0, this._canvas.width, this._canvas.height)
-      notify('Done!', 'Gif processed.')
       this._processing = false
       this._canvas.style.background = 'transparent'
     }

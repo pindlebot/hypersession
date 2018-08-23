@@ -35,8 +35,7 @@
   "dependencies": {
     "babel-runtime": "^6.26.0",
     "debounce": "^1.2.0",
-    "gifencoder": "^1.1.0",
-    "png-js": "^0.1.1"
+    "gifencoder": "^1.1.0"
   },
   "standard": {
     "parser": "babel-eslint",

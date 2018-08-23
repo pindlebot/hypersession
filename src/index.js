@@ -1,4 +1,3 @@
-import PNG from 'png-js'
 import GIFEncoder from 'gifencoder'
 import {
   NS_PER_SEC,
@@ -32,6 +31,24 @@ export const decorateKeymaps = keymaps => {
   }
 }
 
+const toBitmap = (image) => new Promise((resolve, reject) => {
+  setTimeout(() => {
+    let bmp = image.toBitmap()
+    let arr = new Uint8Array(bmp.length)
+    let i = 0
+
+    while (i < bmp.length) {
+      arr[i + 0] = bmp[i + 2]
+      arr[i + 1] = bmp[i + 1]
+      arr[i + 2] = bmp[i + 0]
+      arr[i + 3] = bmp[i + 3]
+      i += 4
+    }
+
+    resolve(arr)
+  }, 0)
+})
+
 export const onWindow = (win) => {
   const path = require('path')
   const fs = require('fs')
@@ -56,9 +73,6 @@ export const onWindow = (win) => {
   let recording = false
   let time
   let frames = []
-  setTimeout(() => {
-    win.rpc.emit('hypersession log', win.rpc.id)
-  }, 2000)
 
   const getDelay = () => {
     let diff = process.hrtime(time)
@@ -74,12 +88,16 @@ export const onWindow = (win) => {
       resolve()
     })
   )
-  const debounced = debounce(capture, 100)
+  const debounced = debounce(capture, 50)
 
   win.rpc.on('hypersession clear', async ({ uid }) => {
     recording = true
     time = process.hrtime()
     win.sessions.get(uid).on('data', debounced)
+  })
+
+  win.rpc.on('hypersession snapshot', ({ uid }) => {
+    debounced()
   })
 
   win.rpc.on('hypersession toggle', async ({ uid }) => {
@@ -100,13 +118,10 @@ export const onWindow = (win) => {
       let index = 0
       while (index < frames.length) {
         let { delay, image } = frames[index]
-        let png = new PNG(image.toPNG())
-        await new Promise((resolve, reject) => png.decode((pixels) => {
-          encoder.setDelay(delay)
-          encoder.addFrame(pixels)
-          win.rpc.emit('hypersession process progress', [index, frames.length])
-          resolve()
-        }))
+        encoder.setDelay(delay)
+        let bitmap = await toBitmap(image)
+        encoder.addFrame(bitmap)
+        win.rpc.emit('hypersession process progress', [index, frames.length])
         index++
       }
       encoder.finish()
@@ -117,21 +132,6 @@ export const onWindow = (win) => {
 
   win.rpc.on('data', async ({ data, uid }) => {
     if (!recording) return
-    // if (/^record$/.test(history.data)) {
-    //  frames = frames.slice(0, history.frame)
-    //  return
-    // }
-
-    // if (data.charCodeAt(0) === 13) {
-    //  history.data = ''
-    //  history.frame = frames.length + 3
-    //  win.sessions.get(uid).once('data', data => {
-    //    setTimeout(() => capture(), 50)
-    //  })
-    // } else {
-    //  history.data += data
-    // }
-
     debounced()
   })
 }
